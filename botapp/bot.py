@@ -7,7 +7,7 @@ from .models import Premise
 from django.contrib.auth.models import User
 
 # Initialize bot
-BOT_TOKEN = '8104048404:AAEmGvCvBhmSCoA5E3jn5SJQruSYxCQI7KQ'
+BOT_TOKEN = '8104048404:AAEDZKx06EetcuMNHYjXBBu99SxdhyKBzqg'
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # User states
@@ -46,28 +46,28 @@ def get_or_create_user(telegram_user):
 # Step handlers
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to Real Estate Bot! Use /newobject to create a new property listing.")
+    bot.reply_to(message, "Добро пожаловать, я - Брокербот, используй /newobject чтобы добавить новый объект.")
 
 @bot.message_handler(commands=['newobject'])
 def start_new_object(message):
     chat_id = message.chat.id
     USER_STATES[chat_id] = UserState()
     USER_STATES[chat_id].current_step = 'name'
-    bot.send_message(chat_id, "Let's create a new real estate object.\nPlease enter the name of the premise:")
+    bot.send_message(chat_id, "Давай создадим новый объект.\nКак назовём?")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'name')
 def process_name(message):
     chat_id = message.chat.id
     USER_STATES[chat_id].data['name'] = message.text
-    USER_STATES[chat_id].current_step = 'location_text'
-    bot.send_message(chat_id, "Please enter the address or location description:")
+    USER_STATES[chat_id].current_step = 'highway'
+    bot.send_message(chat_id, "Какое шоссе?")
 
-@bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'location_text')
-def process_location_text(message):
+@bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'highway')
+def process_highway(message):
     chat_id = message.chat.id
-    USER_STATES[chat_id].data['location_text'] = message.text
+    USER_STATES[chat_id].data['highway'] = message.text
     USER_STATES[chat_id].current_step = 'location_coords'
-    bot.send_message(chat_id, "Now please share the precise location using Telegram's location sharing feature:",
+    bot.send_message(chat_id, "Пришли координаты через Telegram",
                     reply_markup=ReplyKeyboardMarkup(
                         [[{'text': "Share Location", 'request_location': True}]],
                         one_time_keyboard=True
@@ -83,16 +83,34 @@ def process_location_coords(message):
     USER_STATES[chat_id].current_step = 'offer_type'
     
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
-    markup.add('Sale', 'Lease')
-    bot.send_message(chat_id, "What type of offer is this?", reply_markup=markup)
+    markup.add('Продажа', 'Аренда')
+    bot.send_message(chat_id, "Аренда или Продажа?", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'location_coords')
+def process_location_coords(message):
+    chat_id = message.chat.id
+    location = message.location
+    USER_STATES[chat_id].data['latitude'] = location.latitude
+    USER_STATES[chat_id].data['longitude'] = location.longitude
+    USER_STATES[chat_id].current_step = 'offer_type'
+    
+    # Create keyboard with two buttons
+    markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add('Продажа', 'Аренда')
+    
+    bot.send_message(chat_id, "Так Аренда или Продажа?", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'offer_type' 
-                    and message.text.lower() in ['sale', 'lease'])
+                    and message.text in ['Продажа', 'Аренда'])
 def process_offer_type(message):
     chat_id = message.chat.id
     USER_STATES[chat_id].data['offer_type'] = message.text.lower()
     USER_STATES[chat_id].current_step = 'industrial_area'
-    bot.send_message(chat_id, "Enter available industrial area in sqm:", reply_markup=ReplyKeyboardRemove())
+    
+    # Remove the keyboard after selection
+    bot.send_message(chat_id, 
+                    "Какая площадь производственно-складской части?",
+                    reply_markup=ReplyKeyboardRemove())
 
 def is_float(value):
     try:
@@ -105,67 +123,67 @@ def is_float(value):
 def process_industrial_area(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for industrial area:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Площадь склада, кв.м)")
         return
     
     USER_STATES[chat_id].data['industrial_area'] = float(message.text)
     USER_STATES[chat_id].current_step = 'mezzanine_area'
-    bot.send_message(chat_id, "Enter available mezzanine area in sqm:")
+    bot.send_message(chat_id, "Какая площадь мезонина?")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'mezzanine_area')
 def process_mezzanine_area(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for mezzanine area:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Площадь мезонина, кв.м)")
         return
     
     USER_STATES[chat_id].data['mezzanine_area'] = float(message.text)
     USER_STATES[chat_id].current_step = 'office_area'
-    bot.send_message(chat_id, "Enter available office area in sqm:")
+    bot.send_message(chat_id, "Какая площадь офисов?")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'office_area')
 def process_office_area(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for office area:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Площадь офиса, кв.м)")
         return
     
     USER_STATES[chat_id].data['office_area'] = float(message.text)
     
-    if USER_STATES[chat_id].data['offer_type'] == 'lease':
+    if USER_STATES[chat_id].data['offer_type'] == 'аренда':
         USER_STATES[chat_id].current_step = 'industrial_price'
-        bot.send_message(chat_id, "Enter price for industrial area (per sqm/month):")
+        bot.send_message(chat_id, "Какая ставка аренды склада? (кв.м/год)")
     else:
         USER_STATES[chat_id].current_step = 'sale_price'
-        bot.send_message(chat_id, "Enter total sale price (excluding VAT):")
+        bot.send_message(chat_id, "Какая цена продажи без НДС?")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'industrial_price')
 def process_industrial_price(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for industrial price:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Ставка аренды склада, руб./кв.м/год)")
         return
     
     USER_STATES[chat_id].data['industrial_price'] = float(message.text)
     USER_STATES[chat_id].current_step = 'mezzanine_price'
-    bot.send_message(chat_id, "Enter price for mezzanine area (per sqm/month):")
+    bot.send_message(chat_id, "Какая ставка аренды мезонина? (кв.м/год)")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'mezzanine_price')
 def process_mezzanine_price(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for mezzanine price:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Ставка аренды мезонина, руб./кв.м/год)")
         return
     
     USER_STATES[chat_id].data['mezzanine_price'] = float(message.text)
     USER_STATES[chat_id].current_step = 'office_price'
-    bot.send_message(chat_id, "Enter price for office area (per sqm/month):")
+    bot.send_message(chat_id, "Какая ставка аренды офиса")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'office_price')
 def process_office_price(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for office price:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Ставка аренды офиса, руб./кв.м/год)")
         return
     
     USER_STATES[chat_id].data['office_price'] = float(message.text)
@@ -175,7 +193,7 @@ def process_office_price(message):
 def process_sale_price(message):
     chat_id = message.chat.id
     if not is_float(message.text):
-        bot.send_message(chat_id, "Please enter a valid number for sale price:")
+        bot.send_message(chat_id, "Пожалуйста, введите число (Цена продажи, руб.)")
         return
     
     USER_STATES[chat_id].data['sale_price'] = float(message.text)
@@ -185,32 +203,32 @@ def show_confirmation(chat_id):
     user_data = USER_STATES[chat_id].data
     offer_type = user_data['offer_type']
     
-    text = "📋 Please review the information:\n\n"
-    text += f"🏢 Name: {user_data['name']}\n"
-    text += f"📍 Location: {user_data['location_text']}\n"
-    text += f"🌐 Coordinates: {user_data['latitude']}, {user_data['longitude']}\n"
-    text += f"💰 Offer Type: {offer_type.capitalize()}\n"
-    text += f"🏭 Industrial Area: {user_data['industrial_area']} sqm\n"
-    text += f"🏗 Mezzanine Area: {user_data['mezzanine_area']} sqm\n"
-    text += f"🏢 Office Area: {user_data['office_area']} sqm\n"
+    text = "📋 Пожалуйста проверь что всё правильно:\n\n"
+    text += f"🏢 Название: {user_data['name']}\n"
+    text += f"📍 Направление: {user_data['highway']}\n"
+    text += f"🌐 Координаты: {user_data['latitude']}, {user_data['longitude']}\n"
+    text += f"💰 Тип объявления: {offer_type.capitalize()}\n"
+    text += f"🏭 Площадь склад/производства: {user_data['industrial_area']} кв.м\n"
+    text += f"🏗 Площадь мезонина: {user_data['mezzanine_area']} кв.м\n"
+    text += f"🏢 Площадь офиса: {user_data['office_area']} кв.м\n"
     
-    if offer_type == 'lease':
-        text += f"🏭 Industrial Price: {user_data['industrial_price']} per sqm/month\n"
-        text += f"🏗 Mezzanine Price: {user_data['mezzanine_price']} per sqm/month\n"
-        text += f"🏢 Office Price: {user_data['office_price']} per sqm/month\n"
+    if offer_type == 'аренда':
+        text += f"🏭 Ставка аренды склада: {user_data['industrial_price']} руб./кв.м/год\n"
+        text += f"🏗 Ставка аренды мезонина: {user_data['mezzanine_price']} руб./кв.м/год\n"
+        text += f"🏢 Ставка аренды офиса: {user_data['office_price']} руб./кв.м/год\n"
     else:
-        text += f"💰 Sale Price: {user_data['sale_price']} (excluding VAT)\n"
+        text += f"💰 Цена продажи: {user_data['sale_price']} руб. (без НДС)\n"
     
-    text += "\nIs this information correct?"
+    text += "\nВсё верно?"
     
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
-    markup.add('Yes', 'No')
+    markup.add('Да', 'Нет')
     
     USER_STATES[chat_id].current_step = 'confirmation'
     bot.send_message(chat_id, text, reply_markup=markup)
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'confirmation' 
-                    and message.text.lower() == 'yes')
+                    and message.text.lower() == 'да')
 def process_confirmation_yes(message):
     chat_id = message.chat.id
     user_data = USER_STATES[chat_id].data
@@ -223,7 +241,7 @@ def process_confirmation_yes(message):
     premise = Premise(
         creator=user,
         name=user_data['name'],
-        location_text=user_data['location_text'],
+        highway=user_data['highway'],
         latitude=user_data['latitude'],
         longitude=user_data['longitude'],
         offer_type=user_data['offer_type'],
@@ -232,7 +250,7 @@ def process_confirmation_yes(message):
         office_area=user_data['office_area'],
     )
     
-    if user_data['offer_type'] == 'lease':
+    if user_data['offer_type'] == 'аренда':
         premise.industrial_price = user_data['industrial_price']
         premise.mezzanine_price = user_data['mezzanine_price']
         premise.office_price = user_data['office_price']
@@ -241,14 +259,14 @@ def process_confirmation_yes(message):
     
     premise.save()
     
-    bot.send_message(chat_id, "✅ Object successfully saved to database!", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, "✅ Объект создан и добавлен в базу данных!", reply_markup=ReplyKeyboardRemove())
     USER_STATES[chat_id].reset()
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'confirmation' 
-                    and message.text.lower() == 'no')
+                    and message.text.lower() == 'нет')
 def process_confirmation_no(message):
     chat_id = message.chat.id
-    bot.send_message(chat_id, "Object creation cancelled.", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, "Создание объекта отменено.", reply_markup=ReplyKeyboardRemove())
     USER_STATES[chat_id].reset()
 
 @bot.message_handler(commands=['cancel'])
@@ -256,7 +274,7 @@ def cancel_operation(message):
     chat_id = message.chat.id
     if chat_id in USER_STATES:
         USER_STATES[chat_id].reset()
-    bot.send_message(chat_id, "Current operation cancelled.", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, "Текущая операция отменена.", reply_markup=ReplyKeyboardRemove())
 
 def start_polling():
     bot.infinity_polling()
