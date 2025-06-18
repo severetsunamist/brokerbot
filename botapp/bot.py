@@ -7,7 +7,7 @@ from .models import Premise
 from django.contrib.auth.models import User
 
 # Initialize bot
-BOT_TOKEN = '8104048404:AAEDZKx06EetcuMNHYjXBBu99SxdhyKBzqg'
+BOT_TOKEN = ''
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # User states
@@ -48,6 +48,7 @@ def get_or_create_user(telegram_user):
 def send_welcome(message):
     bot.reply_to(message, "Добро пожаловать, я - Брокербот, используй /newobject чтобы добавить новый объект.")
 
+# Новый объект - Название
 @bot.message_handler(commands=['newobject'])
 def start_new_object(message):
     chat_id = message.chat.id
@@ -55,24 +56,45 @@ def start_new_object(message):
     USER_STATES[chat_id].current_step = 'name'
     bot.send_message(chat_id, "Давай создадим новый объект.\nКак назовём?")
 
+# Обработка Название и запрос Шоссе
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'name')
 def process_name(message):
     chat_id = message.chat.id
     USER_STATES[chat_id].data['name'] = message.text
     USER_STATES[chat_id].current_step = 'highway'
-    bot.send_message(chat_id, "Какое шоссе?")
 
+    markup = ReplyKeyboardMarkup(one_time_keyboard=True,
+                                 row_width=2,
+                                 resize_keyboard=True,)
+    markup.add('в черте МКАД',
+                'Ленинградское',
+                'Дмитровское',
+                'Ярославское',
+                'Щелковское',
+                'Горьковское',
+                'Новорязанское',
+                'Каширское',
+                'Симферопольское',
+                'Калужское',
+                'Киевское',
+                'Минское',
+                'Новорижское',
+                'Волоколамское',
+                'Пятницкое',
+                'М-4',
+                'М-11')
+    bot.send_message(chat_id, "Какое шоссе?", reply_markup=markup)
+
+
+# Обработка Шоссе и запрос Координат
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'highway')
 def process_highway(message):
     chat_id = message.chat.id
     USER_STATES[chat_id].data['highway'] = message.text
     USER_STATES[chat_id].current_step = 'location_coords'
-    bot.send_message(chat_id, "Пришли координаты через Telegram",
-                    reply_markup=ReplyKeyboardMarkup(
-                        [[{'text': "Share Location", 'request_location': True}]],
-                        one_time_keyboard=True
-                    ))
+    bot.send_message(chat_id, "Пришли координаты через Telegram", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True))
 
+# Тип предложения Аренда/Продажа
 @bot.message_handler(content_types=['location'], 
                     func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'location_coords')
 def process_location_coords(message):
@@ -89,19 +111,22 @@ def process_location_coords(message):
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'location_coords')
 def process_location_coords(message):
     chat_id = message.chat.id
+    if not message.location:
+        bot.send_message(chat_id, "Нужны координаты или ссылка📍\nили можно выбрать локацию тут ⤵")
+        return
     location = message.location
     USER_STATES[chat_id].data['latitude'] = location.latitude
     USER_STATES[chat_id].data['longitude'] = location.longitude
     USER_STATES[chat_id].current_step = 'offer_type'
     
-    # Create keyboard with two buttons
-    markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    markup.add('Продажа', 'Аренда')
+    # # Создать 2 кнопки Продажа, Аренда
+    # markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    # markup.add('Аренда', 'Продажа')
     
-    bot.send_message(chat_id, "Так Аренда или Продажа?", reply_markup=markup)
+    # bot.send_message(chat_id, "Так Аренда или Продажа?", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'offer_type' 
-                    and message.text in ['Продажа', 'Аренда'])
+                    and message.text in ['Аренда', 'Продажа'])
 def process_offer_type(message):
     chat_id = message.chat.id
     USER_STATES[chat_id].data['offer_type'] = message.text.lower()
