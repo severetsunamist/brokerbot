@@ -1,5 +1,6 @@
 import os
 import telebot
+import re
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply
@@ -105,25 +106,47 @@ def process_location_coords(message):
     USER_STATES[chat_id].current_step = 'offer_type'
     
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
-    markup.add('Продажа', 'Аренда')
+    markup.add('Аренда', 'Продажа')
     bot.send_message(chat_id, "Аренда или Продажа?", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'location_coords')
 def process_location_coords(message):
+    COORDINATE_PATTERN = r'^(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)$'
+    YANDEX_PATTERN = r'(?:https?://)?(?:www\.)?yandex\.\w+/maps/(?:\d+/)?\w*/?\?.*ll=([\d.-]+)%2C([\d.-]+)'
     chat_id = message.chat.id
-    if not message.location:
-        bot.send_message(chat_id, "Нужны координаты или ссылка📍\nили можно выбрать локацию тут ⤵")
-        return
-    location = message.location
-    USER_STATES[chat_id].data['latitude'] = location.latitude
-    USER_STATES[chat_id].data['longitude'] = location.longitude
-    USER_STATES[chat_id].current_step = 'offer_type'
     
-    # # Создать 2 кнопки Продажа, Аренда
-    # markup = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    # markup.add('Аренда', 'Продажа')
-    
-    # bot.send_message(chat_id, "Так Аренда или Продажа?", reply_markup=markup)
+    try:
+        text = message.text.strip()
+        lat, lon = None, None
+        
+        # Check for direct coordinates first
+        coord_match = re.fullmatch(COORDINATE_PATTERN, text)
+        if coord_match:
+            lat = float(coord_match.group(1))
+            lon = float(coord_match.group(2))
+        else:
+            # Check for Yandex Maps link (all formats)
+            yandex_match = re.search(YANDEX_PATTERN, text)
+            if yandex_match:
+                # Yandex uses longitude,latitude order (ll=lon%2Clat)
+                lon = float(yandex_match.group(1))
+                lat = float(yandex_match.group(2))
+        
+        if lat is not None and lon is not None:
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                USER_STATES[chat_id].data['latitude'] = lat
+                USER_STATES[chat_id].data['longitude'] = lon
+                USER_STATES[chat_id].current_step = 'offer_type'
+                markup = ReplyKeyboardMarkup(one_time_keyboard=True)
+                markup.add('Аренда', 'Продажа')
+                bot.send_message(chat_id, "Аренда или Продажа?", reply_markup=markup)
+                return
+        
+        # If we get here, no valid format was found
+        bot.send_message(chat_id, "Пришлите координаты📍\nили прикрепите локацию тут ⤵")
+        
+    except Exception as e:
+        bot.send_message(chat_id, "Пришлите координаты📍\nили прикрепите локацию тут ⤵")
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.chat.id, UserState()).current_step == 'offer_type' 
                     and message.text in ['Аренда', 'Продажа'])
